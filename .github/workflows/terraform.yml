@@ -78,10 +78,10 @@ jobs:
           TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
         continue-on-error: true
 
-      - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_run')
-        run: terraform apply -auto-approve tfplan
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        env:
-          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
-          TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
+      # - name: Terraform Apply
+      #   if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_run')
+      #   run: terraform apply -auto-approve tfplan
+      #   working-directory: ${{ env.TF_WORKING_DIR }}
+      #   env:
+      #     TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+      #     TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}

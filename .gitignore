@@ -7,7 +7,6 @@
 *.tfstate
 *.tfstate.*
 .terraform/
-terraform.tfvars
 *.tfplan
 crash.*.log
 

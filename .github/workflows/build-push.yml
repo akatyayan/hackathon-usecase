@@ -1,74 +1,134 @@
-# Build and push Docker images to GCP Artifact Registry
-name: Build and Push Images
+name: 2 - Build and Deploy
 
 on:
   push:
     branches: [main]
     paths:
-      - 'application-service/**'
-      - 'patient-service/**'
-      - 'order-service/**'
-      - '.github/workflows/build-push.yml'
+      - 'services/**'
+      - 'helm/**'
   workflow_dispatch:
 
 env:
   REGION: us-central1
+  CLUSTER_NAME: prod-gke-cluster
+  REGISTRY_NAME: microservices-repo
 
 jobs:
-  build-push:
-    name: Build and Push
+  build-and-push:
     runs-on: ubuntu-latest
+    
+    # CRITICAL: These permissions are required!
     permissions:
       contents: read
       id-token: write
-
+    
+    outputs:
+      image_tag: ${{ steps.vars.outputs.short_sha }}
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Authenticate to GCP
+      
+      - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
-          service_account: 'github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
-
-      - name: Set up Cloud SDK
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+      
+      - name: Setup Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Configure Docker for Artifact Registry
+      
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+      
+      - name: Set variables
+        id: vars
         run: |
-          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
-      - name: Set image registry URL
-        id: registry
-        run: |
-          echo "url=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hackathon-apps" >> $GITHUB_OUTPUT
           echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-
-      - name: Build and push application-service
+          echo "registry=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}" >> $GITHUB_OUTPUT
+      
+      - name: Build and Push appointment-service
+        working-directory: ./services/appointment-service
         run: |
-          docker build -t ${{ steps.registry.outputs.url }}/application-service:${{ steps.registry.outputs.short_sha }} \
-            -t ${{ steps.registry.outputs.url }}/application-service:latest ./application-service
-          docker push ${{ steps.registry.outputs.url }}/application-service:${{ steps.registry.outputs.short_sha }}
-          docker push ${{ steps.registry.outputs.url }}/application-service:latest
-
-      - name: Build and push patient-service
+          docker build -t ${{ steps.vars.outputs.registry }}/appointment-service:${{ steps.vars.outputs.short_sha }} .
+          docker build -t ${{ steps.vars.outputs.registry }}/appointment-service:latest .
+          docker push ${{ steps.vars.outputs.registry }}/appointment-service:${{ steps.vars.outputs.short_sha }}
+          docker push ${{ steps.vars.outputs.registry }}/appointment-service:latest
+      
+      - name: Build and Push patient-service
+        working-directory: ./services/patient-service
         run: |
-          docker build -t ${{ steps.registry.outputs.url }}/patient-service:${{ steps.registry.outputs.short_sha }} \
-            -t ${{ steps.registry.outputs.url }}/patient-service:latest ./patient-service
-          docker push ${{ steps.registry.outputs.url }}/patient-service:${{ steps.registry.outputs.short_sha }}
-          docker push ${{ steps.registry.outputs.url }}/patient-service:latest
-
-      - name: Build and push order-service
+          docker build -t ${{ steps.vars.outputs.registry }}/patient-service:${{ steps.vars.outputs.short_sha }} .
+          docker build -t ${{ steps.vars.outputs.registry }}/patient-service:latest .
+          docker push ${{ steps.vars.outputs.registry }}/patient-service:${{ steps.vars.outputs.short_sha }}
+          docker push ${{ steps.vars.outputs.registry }}/patient-service:latest
+      
+      - name: Build and Push order-service
+        working-directory: ./services/order-service
         run: |
-          docker build -t ${{ steps.registry.outputs.url }}/order-service:${{ steps.registry.outputs.short_sha }} \
-            -t ${{ steps.registry.outputs.url }}/order-service:latest ./order-service
-          docker push ${{ steps.registry.outputs.url }}/order-service:${{ steps.registry.outputs.short_sha }}
-          docker push ${{ steps.registry.outputs.url }}/order-service:latest
+          docker build -t ${{ steps.vars.outputs.registry }}/order-service:${{ steps.vars.outputs.short_sha }} .
+          docker build -t ${{ steps.vars.outputs.registry }}/order-service:latest .
+          docker push ${{ steps.vars.outputs.registry }}/order-service:${{ steps.vars.outputs.short_sha }}
+          docker push ${{ steps.vars.outputs.registry }}/order-service:latest
 
-      - name: Output image tag
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    # CRITICAL: These permissions are required!
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+      
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+      
+      - name: Get GKE Credentials
         run: |
-          echo "IMAGE_TAG=${{ steps.registry.outputs.short_sha }}" >> $GITHUB_ENV
-          echo "REGISTRY_URL=${{ steps.registry.outputs.url }}" >> $GITHUB_ENV
+          gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
+            --region ${{ env.REGION }}
+      
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+      
+      - name: Deploy appointment-service
+        run: |
+          helm upgrade --install appointment-service ./helm/appointment-service \
+            --set image.repository=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/appointment-service \
+            --set image.tag=${{ needs.build-and-push.outputs.image_tag }} \
+            --namespace default \
+            --create-namespace \
+            --wait
+      
+      - name: Deploy patient-service
+        run: |
+          helm upgrade --install patient-service ./helm/patient-service \
+            --set image.repository=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/patient-service \
+            --set image.tag=${{ needs.build-and-push.outputs.image_tag }} \
+            --namespace default \
+            --wait
+      
+      - name: Deploy order-service
+        run: |
+          helm upgrade --install order-service ./helm/order-service \
+            --set image.repository=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/order-service \
+            --set image.tag=${{ needs.build-and-push.outputs.image_tag }} \
+            --namespace default \
+            --wait
+      
+      - name: Get Services
+        run: |
+          kubectl get services
+          kubectl get pods

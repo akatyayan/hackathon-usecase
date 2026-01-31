@@ -1,4 +1,3 @@
-# Terraform: lint, plan, apply for GKE and GCP infra
 name: Terraform
 
 on:
@@ -6,27 +5,22 @@ on:
     branches: [main]
     paths:
       - 'Terraform/**'
+      - '.github/workflows/terraform.yaml'
   pull_request:
     branches: [main]
     paths:
       - 'Terraform/**'
-  workflow_run:
-    workflows: [Build and Push Images]
-    types:
-      - completed
-    branches: [main]
   workflow_dispatch:
 
 env:
   TF_VERSION: '1.5'
   TF_WORKING_DIR: Terraform/environments/test
+  GCP_REGION: us-central1
 
 jobs:
   terraform:
     name: Terraform
     runs-on: ubuntu-latest
-    # When triggered by Build workflow, run only if Build succeeded
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       id-token: write
@@ -42,11 +36,25 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
+      # ============================================
+      # FIXED: Authenticate to GCP
+      # ============================================
       - name: Authenticate to GCP
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
           service_account: 'github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Verify authentication
+      - name: Verify GCP Authentication
+        run: |
+          gcloud auth list
+          gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+          echo "✅ Authenticated as: $(gcloud config get-value account)"
 
       - name: Terraform Format
         id: fmt
@@ -54,7 +62,7 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         continue-on-error: true
 
-      - name: Terraform Init (no backend for validate)
+      - name: Terraform Init (validation only)
         id: init
         run: terraform init -backend=false
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -64,24 +72,59 @@ jobs:
         run: terraform validate -no-color
         working-directory: ${{ env.TF_WORKING_DIR }}
 
-      - name: Terraform Plan
-        id: plan
+      - name: Terraform Init with Backend
+        id: init-backend
         run: |
           terraform init -reconfigure \
             -backend-config="bucket=${{ secrets.GCP_PROJECT_ID }}-terraform-state" \
-            -backend-config="prefix=dev/state"
-          [ -f terraform.tfvars ] && VARFILE="-var-file=terraform.tfvars" || VARFILE=""
-          terraform plan -no-color $VARFILE -out=tfplan 2>&1 | tee plan.log
+            -backend-config="prefix=test/state"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -no-color -out=tfplan 2>&1 | tee plan.log
         working-directory: ${{ env.TF_WORKING_DIR }}
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
-          TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
+          TF_VAR_region: ${{ env.GCP_REGION }}
         continue-on-error: true
 
-      # - name: Terraform Apply
-      #   if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_run')
-      #   run: terraform apply -auto-approve tfplan
-      #   working-directory: ${{ env.TF_WORKING_DIR }}
-      #   env:
-      #     TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
-      #     TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
+      # Comment PR with plan output
+      - name: Comment PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "${{ steps.plan.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${process.env.PLAN}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve tfplan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ env.GCP_REGION }}

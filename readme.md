@@ -90,9 +90,12 @@ Create workflows for:
 │       |   ├── variables.tf
 │       |   └── outputs.tf
 │       └── artifact-registry/
-│           ├── main.tf
-│           ├── variables.tf
-│           
+│       |   ├── main.tf
+│       |   ├── variables.tf
+│       └── Monitoring/
+│           ├── alerts.tf
+│           ├── dashboard.tf
+|           ├── monitoring.tf  
 ├── helm/
 │   └── microservice/
 │       ├── Chart.yaml

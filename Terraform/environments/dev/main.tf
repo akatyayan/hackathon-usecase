@@ -1,6 +1,4 @@
 terraform {
-  # REQUIRED: Replace YOUR_PROJECT_ID with your GCP project ID (e.g. my-project-123-terraform-state).
-  # Create the bucket first: gsutil mb -p PROJECT_ID -l us-central1 gs://PROJECT_ID-terraform-state/
   backend "gcs" {
     bucket = "YOUR_PROJECT_ID-terraform-state"
     prefix = "test/state"

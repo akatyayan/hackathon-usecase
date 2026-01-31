@@ -54,7 +54,66 @@ Create workflows for:
 4. Terraform apply on merges to main branch
 
 
+<<<<<<< HEAD
 <img width="918" height="613" alt="image" src="https://github.com/user-attachments/assets/fd582d82-40fc-4dc2-b03b-4e0753da18b5" />
 
 
 
+=======
+
+========================================================================================================================                     
+****** Porject overview
+
+
+├── .github/
+│   └── workflows/
+│       ├── build-push.yml
+│       ├── deploy.yml
+│       └── terrafrom.yml
+├── terraform/
+│   ├── environments/
+│   │   ├── dev/
+│   │   │   ├── main.tf
+│   │   │   ├── terraform.tfvars
+│   │   │   └── backend.tf
+│   └── modules/
+│       ├── vpc/
+│       │   ├── main.tf
+│       │   ├── variables.tf
+│       │   └── outputs.tf
+│       ├── gke/
+│       │   ├── main.tf
+│       │   ├── variables.tf
+│       │   └── outputs.tf
+│       └── secrets/
+│       |   ├── main.tf
+│       |   ├── variables.tf
+│       |   └── outputs.tf
+│       └── artifact-registry/
+│           ├── main.tf
+│           ├── variables.tf
+│           
+├── helm/
+│   └── microservice/
+│       ├── Chart.yaml
+│       ├── values.yaml
+│       ├── values-dev.yaml
+│       └── templates/
+│           ├── application-service.yaml
+│           ├── order-service.yaml
+│           ├── ingress.yaml
+│           ├── patient-service.yml
+│           ├── chart.yaml
+│           └── value.yaml
+
+
+
+
+Tech Stack:
+
+IaC: Terraform with modules
+Container: Docker
+Orchestration: GKE (Kubernetes)
+CI/CD: GitHub Actions
+Secrets: Google Secret Manager
+>>>>>>> 4865d68 (hackathon documentation)

@@ -1,0 +1,74 @@
+# Build and push Docker images to GCP Artifact Registry
+name: Build and Push Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'application-service/**'
+      - 'patient-service/**'
+      - 'order-service/**'
+      - '.github/workflows/build-push.yml'
+  workflow_dispatch:
+
+env:
+  REGION: us-central1
+
+jobs:
+  build-push:
+    name: Build and Push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Set image registry URL
+        id: registry
+        run: |
+          echo "url=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hackathon-apps" >> $GITHUB_OUTPUT
+          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Build and push application-service
+        run: |
+          docker build -t ${{ steps.registry.outputs.url }}/application-service:${{ steps.registry.outputs.short_sha }} \
+            -t ${{ steps.registry.outputs.url }}/application-service:latest ./application-service
+          docker push ${{ steps.registry.outputs.url }}/application-service:${{ steps.registry.outputs.short_sha }}
+          docker push ${{ steps.registry.outputs.url }}/application-service:latest
+
+      - name: Build and push patient-service
+        run: |
+          docker build -t ${{ steps.registry.outputs.url }}/patient-service:${{ steps.registry.outputs.short_sha }} \
+            -t ${{ steps.registry.outputs.url }}/patient-service:latest ./patient-service
+          docker push ${{ steps.registry.outputs.url }}/patient-service:${{ steps.registry.outputs.short_sha }}
+          docker push ${{ steps.registry.outputs.url }}/patient-service:latest
+
+      - name: Build and push order-service
+        run: |
+          docker build -t ${{ steps.registry.outputs.url }}/order-service:${{ steps.registry.outputs.short_sha }} \
+            -t ${{ steps.registry.outputs.url }}/order-service:latest ./order-service
+          docker push ${{ steps.registry.outputs.url }}/order-service:${{ steps.registry.outputs.short_sha }}
+          docker push ${{ steps.registry.outputs.url }}/order-service:latest
+
+      - name: Output image tag
+        run: |
+          echo "IMAGE_TAG=${{ steps.registry.outputs.short_sha }}" >> $GITHUB_ENV
+          echo "REGISTRY_URL=${{ steps.registry.outputs.url }}" >> $GITHUB_ENV

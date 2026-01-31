@@ -1,0 +1,76 @@
+# Deploy to GKE using Helm
+name: Deploy to GKE
+
+on:
+  workflow_run:
+    workflows: [Terraform]
+    types:
+      - completed
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag (default: latest)'
+        required: false
+        default: 'latest'
+
+env:
+  GKE_CLUSTER_NAME: dev-gke-cluster
+  GKE_REGION: us-central1
+  HELM_RELEASE_NAME: hackathon-apps
+
+jobs:
+  deploy:
+    name: Deploy with Helm
+    runs-on: ubuntu-latest
+    # Only run if Terraform succeeded or manual trigger
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER_NAME }}
+          location: ${{ env.GKE_REGION }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.13.0'
+
+      - name: Set image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          [ -z "$TAG" ] && TAG="latest"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Deploy with Helm
+        run: |
+          REGISTRY="${{ env.GKE_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hackathon-apps"
+          helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ./helm/hackathon-apps \
+            --set global.imageRegistry=$REGISTRY \
+            --set global.imageTag=${{ steps.tag.outputs.tag }} \
+            --wait --timeout 5m
+
+      - name: Show Ingress
+        run: |
+          kubectl get ingress -A
+          kubectl get pods -A -l 'app in (application-service,patient-service,order-service)'

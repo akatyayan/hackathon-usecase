@@ -2,3 +2,15 @@
 .class*
 .jar
 .ear
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfvars
+*.tfplan
+crash.*.log
+
+# GCP keys (never commit)
+key.json
+*-credentials.json

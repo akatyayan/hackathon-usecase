@@ -1,0 +1,87 @@
+# Terraform: lint, plan, apply for GKE and GCP infra
+name: Terraform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Terraform/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Terraform/**'
+  workflow_run:
+    workflows: [Build and Push Images]
+    types:
+      - completed
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  TF_VERSION: '1.5'
+  TF_WORKING_DIR: Terraform/environments/test
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    # When triggered by Build workflow, run only if Build succeeded
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check -recursive
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        continue-on-error: true
+
+      - name: Terraform Init (no backend for validate)
+        id: init
+        run: terraform init -backend=false
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=${{ secrets.GCP_PROJECT_ID }}-terraform-state" \
+            -backend-config="prefix=dev/state"
+          [ -f terraform.tfvars ] && VARFILE="-var-file=terraform.tfvars" || VARFILE=""
+          terraform plan -no-color $VARFILE -out=tfplan 2>&1 | tee plan.log
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
+        continue-on-error: true
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_run')
+        run: terraform apply -auto-approve tfplan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}

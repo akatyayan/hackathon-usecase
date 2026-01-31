@@ -1,19 +1,19 @@
 const express = require('express');
     const app = express();
     const port = process.env.PORT || 3000;
-    
+
     app.use(express.json());
-    
+
     // In-memory data store (replace with a database in a real application)
     let patients = [
       { id: '1', name: 'John Doe', age: 30, condition: 'Healthy' },
       { id: '2', name: 'Jane Smith', age: 45, condition: 'Hypertension' }
     ];
-    
+
     app.get('/health', (req, res) => {
       res.status(200).json({ status: 'OK', service: 'Patient Service' });
     });
-    
+
     app.get('/patients', (req, res) => {
       res.json({ 
         message: 'Patients retrieved successfully',
@@ -21,7 +21,7 @@ const express = require('express');
         patients: patients 
       });
     });
-    
+
     app.get('/patients/:id', (req, res) => {
       const patient = patients.find(p => p.id === req.params.id);
       if (patient) {
@@ -33,7 +33,7 @@ const express = require('express');
         res.status(404).json({ error: 'Patient not found' });
       }
     });
-    
+
     app.post('/patients', (req, res) => {
       try {
         const { name, age, condition } = req.body;
@@ -55,7 +55,7 @@ const express = require('express');
         res.status(500).json({ error: 'Internal server error' });
       }
     });
-    
+
     app.listen(port, '0.0.0.0', () => {
       console.log(`Patient service listening at http://0.0.0.0:${port}`);
     });

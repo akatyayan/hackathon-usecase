@@ -1,14 +1,9 @@
 name: Terraform
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'terraform/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'terraform/**'
+  workflow_run:
+    workflows: ["Build and Push Images"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       environment:
@@ -17,16 +12,15 @@ on:
         type: choice
         options:
           - dev
-          - staging
-          - prod
 
 env:
   TF_VERSION: '1.5'
 
 jobs:
   terraform:
-    name: Terraform (${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'dev' }})
+    name: Terraform (${{ github.event.inputs.environment || 'dev' }})
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: read
       id-token: write
@@ -36,20 +30,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
 
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-
 
       - name: Set Environment
         id: env
@@ -60,18 +51,15 @@ jobs:
             echo "name=dev" >> $GITHUB_OUTPUT
           fi
 
-
       - name: Terraform Format
         id: fmt
         run: terraform fmt -check -recursive
         working-directory: terraform/environments/${{ steps.env.outputs.name }}
         continue-on-error: true
 
-
       - name: Terraform Init (validate)
         run: terraform init -backend=false
         working-directory: terraform/environments/${{ steps.env.outputs.name }}
-
 
       - name: Terraform Validate
         id: validate
@@ -85,58 +73,17 @@ jobs:
             -backend-config="prefix=${{ steps.env.outputs.name }}/state"
         working-directory: terraform/environments/${{ steps.env.outputs.name }}
 
-
       - name: Terraform Plan
         id: plan
         run: |
-          terraform plan -no-color -out=tfplan 2>&1 | tee plan.log
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          terraform plan -no-color -out=tfplan
         working-directory: terraform/environments/${{ steps.env.outputs.name }}
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
           TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
-        continue-on-error: true
-
-
-      - name: Comment PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        env:
-          PLAN: ${{ steps.plan.outputs.stdout }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
-            const plan = fs.readFileSync('terraform/environments/${{ steps.env.outputs.name }}/plan.log', 'utf8');
-            const output = [
-              '#### Terraform `${{ steps.env.outputs.name }}` 🖌️',
-              '',
-              '| Step | Status |',
-              '|------|--------|',
-              '| Format | ${{ steps.fmt.outcome }} |',
-              '| Validate | ${{ steps.validate.outcome }} |',
-              '| Plan | ${{ steps.plan.outcome }} |',
-              '',
-              '<details><summary>Plan Output</summary>',
-              '',
-              '```terraform',
-              plan,
-              '```',
-              '',
-              '</details>',
-              '',
-              `*Pushed by @${{ github.actor }} via \`${{ github.event_name }}\`*`
-            ].join('\n');
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            });
 
       # - name: Terraform Apply
-      #   if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
+      #   if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
       #   run: terraform apply -auto-approve tfplan
       #   working-directory: terraform/environments/${{ steps.env.outputs.name }}
       #   env:

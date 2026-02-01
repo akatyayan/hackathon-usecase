@@ -22,10 +22,10 @@ jobs:
         include:
           - service: patient-service
             path: patient-service
-          - service: appointment-service
+          - service: application-service
             path: appointment-service
           - service: order-service
-            path: Order-Service
+            path: order-service
       fail-fast: false
 
     steps:

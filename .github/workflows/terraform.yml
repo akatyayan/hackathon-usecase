@@ -1,28 +1,45 @@
-name: Test Auth Only
+name: Test GCP Authentication
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  test-auth:
     runs-on: ubuntu-latest
+    
     permissions:
       contents: read
       id-token: write
-
+    
     steps:
-      - name: Authenticate to GCP
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Authenticate to Google Cloud
+        id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-actions-pool/providers/github-oidc'
-          service_account: 'github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
-
-      - name: Setup Cloud SDK
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_PROJECT_ID != '' && format('github-actions@{0}.iam.gserviceaccount.com', secrets.GCP_PROJECT_ID) || 'MISSING_PROJECT_ID' }}
+      
+      - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
-
-      - name: Verify
+      
+      - name: Test Authentication
         run: |
-          echo "Account: $(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
-          echo "Project: $(gcloud config get-value project)"
-          gcloud projects describe ${{ secrets.GCP_PROJECT_ID }} --format='value(name)'
-          echo "✅ Auth successful"
+          echo "=========================================="
+          echo "Authentication Test"
+          echo "=========================================="
+          echo ""
+          echo "Authenticated as:"
+          gcloud auth list
+          echo ""
+          echo "Active project:"
+          gcloud config get-value project
+          echo ""
+          echo "Available projects:"
+          gcloud projects list
+          echo ""
+          echo "=========================================="
+          echo "✅ Authentication Successful!"
+          echo "=========================================="

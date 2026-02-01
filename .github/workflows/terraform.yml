@@ -1,29 +1,49 @@
-name: Test GCP Auth
+name: Terraform Infrastructure
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/**'
   workflow_dispatch:
 
 jobs:
-  test:
+  terraform:
     runs-on: ubuntu-latest
+    
+    # CRITICAL: These permissions are required!
     permissions:
       contents: read
       id-token: write
     
+    defaults:
+      run:
+        working-directory: ./terraform
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       
-      - name: Authenticate to GCP
+      - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
       
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
       
-      - name: Test
-        run: |
-          echo "✅ Authentication successful!"
-          gcloud auth list
-          gcloud config get-value project
+      - name: Terraform Init
+        run: terraform init
+      
+      - name: Terraform Validate
+        run: terraform validate
+      
+      - name: Terraform Plan
+        run: terraform plan
+      
+      # - name: Terraform Apply
+      #   if: github.ref == 'refs/heads/main'
+      #   run: terraform apply -auto-approve

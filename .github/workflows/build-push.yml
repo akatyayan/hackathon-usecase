@@ -19,10 +19,13 @@ jobs:
 
     strategy:
       matrix:
-        service:
-          - patient-service
-          - appointment-service
-          - order-service
+        include:
+          - service: patient-service
+            path: patient-service
+          - service: appointment-service  
+            path: appointment-service
+          - service: order-service
+            path: Order-Service
       fail-fast: false
 
     steps:
@@ -44,16 +47,12 @@ jobs:
       - name: Build and Push
         run: |
           IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/hackathon-images/${{ matrix.service }}"
-          
-          # Force lowercase for Docker registry
-          LOWER_IMAGE_NAME=$(echo $IMAGE_NAME | tr '[:upper:]' '[:lower:]')
-          
-          SERVICE_PATH="${{ matrix.service }}"
+          SERVICE_PATH="${{ matrix.path }}"
           
           docker build \
-            -t ${LOWER_IMAGE_NAME}:${{ github.sha }} \
-            -t ${LOWER_IMAGE_NAME}:latest \
+            -t ${IMAGE_NAME}:${{ github.sha }} \
+            -t ${IMAGE_NAME}:latest \
             $SERVICE_PATH
             
-          docker push ${LOWER_IMAGE_NAME}:${{ github.sha }}
-          docker push ${LOWER_IMAGE_NAME}:latest
+          docker push ${IMAGE_NAME}:${{ github.sha }}
+          docker push ${IMAGE_NAME}:latest

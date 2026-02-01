@@ -28,6 +28,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug - List directory structure
+        run: |
+          echo "=== Current directory ==="
+          pwd
+          echo ""
+          echo "=== Root directory contents ==="
+          ls -la
+          echo ""
+          echo "=== Find all directories ==="
+          find . -type d -maxdepth 3
+          echo ""
+          echo "=== Find all Dockerfiles ==="
+          find . -name "Dockerfile"
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -49,4 +63,4 @@ jobs:
           docker push ${IMAGE_NAME}:${{ github.sha }}
           docker push ${IMAGE_NAME}:latest
           
-          echo " Successfully pushed ${IMAGE_NAME}:${{ github.sha }}"
+          echo "✅ Successfully pushed ${IMAGE_NAME}:${{ github.sha }}"

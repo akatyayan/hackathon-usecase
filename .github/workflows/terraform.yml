@@ -1,49 +1,91 @@
-name: Terraform Infrastructure
+name: Terraform
 
 on:
   push:
     branches: [main]
     paths:
-      - 'terraform/**'
+      - 'Terraform/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Terraform/**'
   workflow_dispatch:
+
+env:
+  TF_VERSION: '1.5'
+  TF_WORKING_DIR: Terraform/environments/dev
 
 jobs:
   terraform:
+    name: Terraform
     runs-on: ubuntu-latest
-    
-    # CRITICAL: These permissions are required!
     permissions:
       contents: read
       id-token: write
-    
-    defaults:
-      run:
-        working-directory: Terraform
-    
+      pull-requests: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-      
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0
-      
-      - name: Terraform Init
-        run: terraform init
-      
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-actions-pool/providers/github-oidc'
+          service_account: 'github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify Auth
+        run: |
+          gcloud auth list
+          gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check -recursive
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        continue-on-error: true
+
+      - name: Terraform Init (validate only)
+        id: init-validate
+        run: terraform init -backend=false
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
       - name: Terraform Validate
-        run: terraform validate
-      
+        id: validate
+        run: terraform validate -no-color
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Init (with backend)
+        id: init
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=${{ secrets.GCP_PROJECT_ID }}-terraform-state" \
+            -backend-config="prefix=test/state"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
       - name: Terraform Plan
-        run: terraform plan
-      
+        id: plan
+        run: |
+          terraform plan -no-color -out=tfplan 2>&1 | tee plan.log
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
+
       # - name: Terraform Apply
-      #   if: github.ref == 'refs/heads/main'
-      #   run: terraform apply -auto-approve
+      #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      #   run: terraform apply -auto-approve tfplan
+      #   working-directory: ${{ env.TF_WORKING_DIR }}
+      #   env:
+      #     TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+      #     TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}

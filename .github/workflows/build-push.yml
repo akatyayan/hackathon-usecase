@@ -20,24 +20,14 @@ jobs:
     strategy:
       matrix:
         service:
-          - patient-service      # ✅ Matches hackathon-usecase/patient-service/
-          - appointment-service  # ✅ Matches hackathon-usecase/appointment-service/
+          - patient-service
+          - appointment-service
+          - Order-Service
       fail-fast: false
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Debug - Repository Structure
-        run: |
-          echo "📁 Root directory:"
-          ls -la
-          echo ""
-          echo "📁 hackathon-usecase contents:"
-          ls -la hackathon-usecase/ || echo "hackathon-usecase/ not found"
-          echo ""
-          echo "📁 All Dockerfiles:"
-          find . -name "Dockerfile" -type f
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -51,41 +41,15 @@ jobs:
       - name: Configure Docker
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
 
-      - name: Build and Push Docker Image
+      - name: Build and Push
         run: |
           IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/hackathon-images/${{ matrix.service }}"
-          SERVICE_PATH="hackathon-usecase/${{ matrix.service }}"
+          SERVICE_PATH="${{ matrix.service }}"
           
-          echo "🔍 Building service: ${{ matrix.service }}"
-          echo "📁 Context path: $SERVICE_PATH"
-          echo "🐳 Target image: $IMAGE_NAME"
-          
-          # Verify service directory exists
-          ls -la hackathon-usecase/ || exit 1
-          if [ ! -d "$SERVICE_PATH" ]; then
-            echo "❌ ERROR: $SERVICE_PATH does not exist!"
-            echo "Available directories in hackathon-usecase/:"
-            ls -la hackathon-usecase/
-            exit 1
-          fi
-          
-          # Verify Dockerfile exists
-          if [ ! -f "$SERVICE_PATH/Dockerfile" ]; then
-            echo "❌ ERROR: Dockerfile not found in $SERVICE_PATH/"
-            echo "Contents of $SERVICE_PATH/:"
-            ls -la $SERVICE_PATH/
-            exit 1
-          fi
-          
-          # Build and push images
-          echo "🚀 Building Docker image..."
           docker build \
-            --tag ${IMAGE_NAME}:${{ github.sha }} \
-            --tag ${IMAGE_NAME}:latest \
+            -t ${IMAGE_NAME}:${{ github.sha }} \
+            -t ${IMAGE_NAME}:latest \
             $SERVICE_PATH
             
-          echo "📤 Pushing images..."
           docker push ${IMAGE_NAME}:${{ github.sha }}
           docker push ${IMAGE_NAME}:latest
-          
-          echo "✅ SUCCESS: Pushed ${IMAGE_NAME}:${{ github.sha }}"

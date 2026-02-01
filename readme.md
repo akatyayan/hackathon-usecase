@@ -56,4 +56,23 @@ Create workflows for:
 <img width="918" height="613" alt="image" src="https://github.com/user-attachments/assets/fd582d82-40fc-4dc2-b03b-4e0753da18b5" />
 
 
+============Project overview========
 
+
+├── Hackathon-USECASES
+│   ├── patient-service/
+│   │   ├── package.json
+│   │   ├── Dockerfile
+│   │   └── .dockerignore
+│   └── appointment-service/
+│   |   ├── package.json
+│   |   ├── Dockerfile
+│   |   └── .dockerignore
+|.  |
+    └──Order-Service/
+    |   ├─src
+    |.  ├─target
+    |   ├─Dockerfile
+    |.  pom.xml
+├── README.md
+├── .gitignore

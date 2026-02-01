@@ -11,7 +11,7 @@ env:
 
 jobs:
   build-and-push:
-    name: Build and Push ${{ matrix.service }}
+    name: Build ${{ matrix.service }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,32 +20,24 @@ jobs:
     strategy:
       matrix:
         service:
-          - patient-service
-          - appointment-service
+          - patient-service      # ✅ Matches hackathon-usecase/patient-service/
+          - appointment-service  # ✅ Matches hackathon-usecase/appointment-service/
       fail-fast: false
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 🔍 Debug - COMPLETE Repository Structure
+      - name: Debug - Repository Structure
         run: |
-          echo "📁 ROOT directory contents:"
+          echo "📁 Root directory:"
           ls -la
           echo ""
-          echo "📁 All directories (1 level deep):"
-          find . -maxdepth 1 -type d ! -path .
+          echo "📁 hackathon-usecase contents:"
+          ls -la hackathon-usecase/ || echo "hackathon-usecase/ not found"
           echo ""
           echo "📁 All Dockerfiles:"
           find . -name "Dockerfile" -type f
-          echo ""
-          echo "📁 Service-specific check:"
-          for service in patient-service appointment-service; do
-            echo "--- Checking $service ---"
-            ls -la $service/ 2>/dev/null || echo "❌ $service/ NOT FOUND"
-            ls -la hackathon-usecase/$service/ 2>/dev/null || echo "❌ hackathon-usecase/$service/ NOT FOUND"
-            ls -la Hackathon-USECASES/$service/ 2>/dev/null || echo "❌ Hackathon-USECASES/$service/ NOT FOUND"
-          done
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -56,49 +48,44 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for Artifact Registry
+      - name: Configure Docker
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
 
-      - name: 🚀 Build and Push Docker Image
+      - name: Build and Push Docker Image
         run: |
           IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/hackathon-images/${{ matrix.service }}"
+          SERVICE_PATH="hackathon-usecase/${{ matrix.service }}"
           
-          # TRY MULTIPLE POSSIBLE PATHS (handles any casing/structure)
-          SERVICE_PATH=""
+          echo "🔍 Building service: ${{ matrix.service }}"
+          echo "📁 Context path: $SERVICE_PATH"
+          echo "🐳 Target image: $IMAGE_NAME"
           
-          if [ -d "${{ matrix.service }}" ]; then
-            SERVICE_PATH="${{ matrix.service }}"
-            echo "✅ Found service directly in root: $SERVICE_PATH"
-          elif [ -d "hackathon-usecase/${{ matrix.service }}" ]; then
-            SERVICE_PATH="hackathon-usecase/${{ matrix.service }}"
-            echo "✅ Found in hackathon-usecase/: $SERVICE_PATH"
-          elif [ -d "Hackathon-USECASES/${{ matrix.service }}" ]; then
-            SERVICE_PATH="Hackathon-USECASES/${{ matrix.service }}"
-            echo "✅ Found in Hackathon-USECASES/: $SERVICE_PATH"
-          else
-            echo "❌ ERROR: ${{ matrix.service }} not found in any expected location!"
-            echo "Available directories:"
-            ls -la
+          # Verify service directory exists
+          ls -la hackathon-usecase/ || exit 1
+          if [ ! -d "$SERVICE_PATH" ]; then
+            echo "❌ ERROR: $SERVICE_PATH does not exist!"
+            echo "Available directories in hackathon-usecase/:"
+            ls -la hackathon-usecase/
             exit 1
           fi
           
-          # Verify Dockerfile
+          # Verify Dockerfile exists
           if [ ! -f "$SERVICE_PATH/Dockerfile" ]; then
             echo "❌ ERROR: Dockerfile not found in $SERVICE_PATH/"
-            ls -la "$SERVICE_PATH/"
+            echo "Contents of $SERVICE_PATH/:"
+            ls -la $SERVICE_PATH/
             exit 1
           fi
           
-          echo "📁 Using path: $SERVICE_PATH"
-          echo "🐳 Image: $IMAGE_NAME:${{ github.sha }}"
-          
-          # Build & Push
+          # Build and push images
+          echo "🚀 Building Docker image..."
           docker build \
-            -t "${IMAGE_NAME}:${{ github.sha }}" \
-            -t "${IMAGE_NAME}:latest" \
-            "$SERVICE_PATH"
+            --tag ${IMAGE_NAME}:${{ github.sha }} \
+            --tag ${IMAGE_NAME}:latest \
+            $SERVICE_PATH
             
-          docker push "${IMAGE_NAME}:${{ github.sha }}"
-          docker push "${IMAGE_NAME}:latest"
+          echo "📤 Pushing images..."
+          docker push ${IMAGE_NAME}:${{ github.sha }}
+          docker push ${IMAGE_NAME}:latest
           
           echo "✅ SUCCESS: Pushed ${IMAGE_NAME}:${{ github.sha }}"

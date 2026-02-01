@@ -22,7 +22,7 @@ jobs:
         service:
           - patient-service
           - appointment-service
-          - Order-Service
+          - order-service
       fail-fast: false
 
     steps:
@@ -43,7 +43,7 @@ jobs:
 
       - name: Build and Push
         run: |
-          IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/hackathon-images/${{ matrix.service }}"
+          IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/hackathon-images/${{ matrix.service | lowercase }}"
           SERVICE_PATH="${{ matrix.service }}"
           
           docker build \

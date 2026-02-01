@@ -1,0 +1,1 @@
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"gke","Source":"../../modules/gke","Dir":"../../modules/gke"},{"Key":"iam","Source":"../../modules/iam","Dir":"../../modules/iam"},{"Key":"secrets","Source":"../../modules/secrets","Dir":"../../modules/secrets"},{"Key":"vpc","Source":"../../modules/vpc","Dir":"../../modules/vpc"}]}

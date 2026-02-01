@@ -3,15 +3,15 @@ name: Build and Push Images
 on:
   push:
     branches: [main]
-
   workflow_dispatch:
 
 env:
-  REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  GCP_REGION: us-central1
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
 jobs:
-  build:
-    name: Build - ${{ matrix.service }}
+  build-and-push:
+    name: Build and Push ${{ matrix.service }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,41 +25,28 @@ jobs:
       fail-fast: false
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Authenticate to GCP
+      - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
 
-      - name: Setup Cloud SDK
+      - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker
-        run: |
-          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
 
-      - name: Set Image Tag
-        id: tag
+      - name: Build and Push Docker Image
         run: |
-          echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
-          echo "registry=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hackathon-images" >> $GITHUB_OUTPUT
-
-      - name: Build Image
-        run: |
-          docker build \
-            -t ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:${{ steps.tag.outputs.tag }} \
-            -t ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:latest \
-            ./hackathon-usecase/${{ matrix.service }}
-
-      - name: Push Image (only on main)
-        if: github.ref == 'refs/heads/main'
-        run: |
-          docker push ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:${{ steps.tag.outputs.tag }}
-          docker push ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:latest
-
-      - name: Output Image
-        run: |
-          echo "Built: ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:${{ steps.tag.outputs.tag }}"
+          IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/hackathon-images/${{ matrix.service }}"
+          
+          docker build -t ${IMAGE_NAME}:${{ github.sha }} -t ${IMAGE_NAME}:latest ./hackathon-usecase/${{ matrix.service }}
+          
+          docker push ${IMAGE_NAME}:${{ github.sha }}
+          docker push ${IMAGE_NAME}:latest
+          
+          echo " Successfully pushed ${IMAGE_NAME}:${{ github.sha }}"

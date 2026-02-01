@@ -20,26 +20,23 @@ jobs:
     strategy:
       matrix:
         service:
-          - patient-service
-          - appointment-service
+          - patient-service      # ✅ Matches hackathon-usecase/patient-service/
+          - appointment-service  # ✅ Matches hackathon-usecase/appointment-service/
       fail-fast: false
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Debug - List directory structure
+      - name: Debug - Repository Structure
         run: |
-          echo "=== Current directory ==="
-          pwd
-          echo ""
-          echo "=== Root directory contents ==="
+          echo "📁 Root directory:"
           ls -la
           echo ""
-          echo "=== Service directories ==="
-          ls -la hackathon-usecase/
+          echo "📁 hackathon-usecase contents:"
+          ls -la hackathon-usecase/ || echo "hackathon-usecase/ not found"
           echo ""
-          echo "=== Dockerfiles found ==="
+          echo "📁 All Dockerfiles:"
           find . -name "Dockerfile" -type f
 
       - name: Authenticate to Google Cloud
@@ -59,26 +56,36 @@ jobs:
           IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/hackathon-images/${{ matrix.service }}"
           SERVICE_PATH="hackathon-usecase/${{ matrix.service }}"
           
-          echo "📁 Building from path: $SERVICE_PATH"
-          echo "🐳 Image name: $IMAGE_NAME"
+          echo "🔍 Building service: ${{ matrix.service }}"
+          echo "📁 Context path: $SERVICE_PATH"
+          echo "🐳 Target image: $IMAGE_NAME"
           
-          # Verify path exists
+          # Verify service directory exists
+          ls -la hackathon-usecase/ || exit 1
           if [ ! -d "$SERVICE_PATH" ]; then
-            echo "❌ Path $SERVICE_PATH does not exist!"
+            echo "❌ ERROR: $SERVICE_PATH does not exist!"
+            echo "Available directories in hackathon-usecase/:"
             ls -la hackathon-usecase/
             exit 1
           fi
           
           # Verify Dockerfile exists
           if [ ! -f "$SERVICE_PATH/Dockerfile" ]; then
-            echo "❌ Dockerfile not found in $SERVICE_PATH!"
+            echo "❌ ERROR: Dockerfile not found in $SERVICE_PATH/"
+            echo "Contents of $SERVICE_PATH/:"
             ls -la $SERVICE_PATH/
             exit 1
           fi
           
-          # Build and push
-          docker build -t ${IMAGE_NAME}:${{ github.sha }} -t ${IMAGE_NAME}:latest $SERVICE_PATH
+          # Build and push images
+          echo "🚀 Building Docker image..."
+          docker build \
+            --tag ${IMAGE_NAME}:${{ github.sha }} \
+            --tag ${IMAGE_NAME}:latest \
+            $SERVICE_PATH
+            
+          echo "📤 Pushing images..."
           docker push ${IMAGE_NAME}:${{ github.sha }}
           docker push ${IMAGE_NAME}:latest
           
-          echo "✅ Successfully pushed ${IMAGE_NAME}:${{ github.sha }}"
+          echo "✅ SUCCESS: Pushed ${IMAGE_NAME}:${{ github.sha }}"

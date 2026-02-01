@@ -1,134 +1,71 @@
-name: 2 - Build and Deploy
+name: Build and Push Images
 
 on:
   push:
     branches: [main]
     paths:
-      - 'services/**'
-      - 'helm/**'
+      - 'microservices/**'
+      - 'Dockerfile'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'microservices/**'
   workflow_dispatch:
 
 env:
-  REGION: us-central1
-  CLUSTER_NAME: prod-gke-cluster
-  REGISTRY_NAME: microservices-repo
+  REGION: ${{ vars.GCP_REGION || 'us-central1' }}
 
 jobs:
-  build-and-push:
+  build:
+    name: Build - ${{ matrix.service }}
     runs-on: ubuntu-latest
-    
-    # CRITICAL: These permissions are required!
     permissions:
       contents: read
       id-token: write
-    
-    outputs:
-      image_tag: ${{ steps.vars.outputs.short_sha }}
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-      
-      - name: Setup Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-      
-      - name: Configure Docker
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
-      
-      - name: Set variables
-        id: vars
-        run: |
-          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-          echo "registry=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}" >> $GITHUB_OUTPUT
-      
-      - name: Build and Push appointment-service
-        working-directory: ./services/appointment-service
-        run: |
-          docker build -t ${{ steps.vars.outputs.registry }}/appointment-service:${{ steps.vars.outputs.short_sha }} .
-          docker build -t ${{ steps.vars.outputs.registry }}/appointment-service:latest .
-          docker push ${{ steps.vars.outputs.registry }}/appointment-service:${{ steps.vars.outputs.short_sha }}
-          docker push ${{ steps.vars.outputs.registry }}/appointment-service:latest
-      
-      - name: Build and Push patient-service
-        working-directory: ./services/patient-service
-        run: |
-          docker build -t ${{ steps.vars.outputs.registry }}/patient-service:${{ steps.vars.outputs.short_sha }} .
-          docker build -t ${{ steps.vars.outputs.registry }}/patient-service:latest .
-          docker push ${{ steps.vars.outputs.registry }}/patient-service:${{ steps.vars.outputs.short_sha }}
-          docker push ${{ steps.vars.outputs.registry }}/patient-service:latest
-      
-      - name: Build and Push order-service
-        working-directory: ./services/order-service
-        run: |
-          docker build -t ${{ steps.vars.outputs.registry }}/order-service:${{ steps.vars.outputs.short_sha }} .
-          docker build -t ${{ steps.vars.outputs.registry }}/order-service:latest .
-          docker push ${{ steps.vars.outputs.registry }}/order-service:${{ steps.vars.outputs.short_sha }}
-          docker push ${{ steps.vars.outputs.registry }}/order-service:latest
 
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    
-    # CRITICAL: These permissions are required!
-    permissions:
-      contents: read
-      id-token: write
-    
+    strategy:
+      matrix:
+        service:
+          - patient-service
+          - appointment-service
+      fail-fast: false
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
-      - name: Authenticate to Google Cloud
+
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-      
+          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-actions-pool/providers/github-oidc'
+          service_account: 'github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+
       - name: Setup Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
-      
-      - name: Get GKE Credentials
+
+      - name: Configure Docker
         run: |
-          gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
-            --region ${{ env.REGION }}
-      
-      - name: Install Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: '3.12.0'
-      
-      - name: Deploy appointment-service
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Set Image Tag
+        id: tag
         run: |
-          helm upgrade --install appointment-service ./helm/appointment-service \
-            --set image.repository=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/appointment-service \
-            --set image.tag=${{ needs.build-and-push.outputs.image_tag }} \
-            --namespace default \
-            --create-namespace \
-            --wait
-      
-      - name: Deploy patient-service
+          echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "registry=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hackathon-images" >> $GITHUB_OUTPUT
+
+      - name: Build Image
         run: |
-          helm upgrade --install patient-service ./helm/patient-service \
-            --set image.repository=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/patient-service \
-            --set image.tag=${{ needs.build-and-push.outputs.image_tag }} \
-            --namespace default \
-            --wait
-      
-      - name: Deploy order-service
+          docker build \
+            -t ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:${{ steps.tag.outputs.tag }} \
+            -t ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:latest \
+            ./microservices/${{ matrix.service }}
+
+      - name: Push Image (only on main)
+        if: github.ref == 'refs/heads/main'
         run: |
-          helm upgrade --install order-service ./helm/order-service \
-            --set image.repository=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/order-service \
-            --set image.tag=${{ needs.build-and-push.outputs.image_tag }} \
-            --namespace default \
-            --wait
-      
-      - name: Get Services
+          docker push ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:${{ steps.tag.outputs.tag }}
+          docker push ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:latest
+
+      - name: Output Image
         run: |
-          kubectl get services
-          kubectl get pods
+          echo "Built: ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:${{ steps.tag.outputs.tag }}"

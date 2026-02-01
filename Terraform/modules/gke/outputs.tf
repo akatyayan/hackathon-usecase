@@ -8,10 +8,6 @@ output "cluster_endpoint" {
 }
 
 output "cluster_ca_certificate" {
-  value     = google_container_cluster.primary.master_auth[0].cluster_ca_certificate
+  value     = google_container_cluster.primary.master_auth.0.cluster_ca_certificate
   sensitive = true
-}
-
-output "cluster_location" {
-  value = google_container_cluster.primary.location
 }

@@ -22,7 +22,7 @@ jobs:
         include:
           - service: patient-service
             path: patient-service
-          - service: appointment-service  
+          - service: appointment-service
             path: appointment-service
           - service: order-service
             path: Order-Service

@@ -4,12 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Hackathon-USECASES/**'
+      - 'hackathon-usecase/**'
       - 'Dockerfile'
   pull_request:
     branches: [main]
     paths:
-      - 'Hackathon-USECASES/**'
+      - 'hackathon-usecase/**'
   workflow_dispatch:
 
 env:
@@ -58,7 +58,7 @@ jobs:
           docker build \
             -t ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:${{ steps.tag.outputs.tag }} \
             -t ${{ steps.tag.outputs.registry }}/${{ matrix.service }}:latest \
-            ./Hackathon-USECASES/${{ matrix.service }}
+            ./hackathon-usecase/${{ matrix.service }}
 
       - name: Push Image (only on main)
         if: github.ref == 'refs/heads/main'

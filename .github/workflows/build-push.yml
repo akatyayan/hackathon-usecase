@@ -3,13 +3,7 @@ name: Build and Push Images
 on:
   push:
     branches: [main]
-    paths:
-      - 'hackathon-usecase/**'
-      - 'Dockerfile'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'hackathon-usecase/**'
+
   workflow_dispatch:
 
 env:

@@ -23,7 +23,7 @@ jobs:
           - service: patient-service
             path: patient-service
           - service: application-service
-            path: appointment-service
+            path: application-service
           - service: order-service
             path: order-service
       fail-fast: false

@@ -1,45 +1,29 @@
-name: Test GCP Authentication
+name: Test GCP Auth
 
 on:
   workflow_dispatch:
 
 jobs:
-  test-auth:
+  test:
     runs-on: ubuntu-latest
-    
     permissions:
       contents: read
       id-token: write
     
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       
-      - name: Authenticate to Google Cloud
-        id: auth
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_PROJECT_ID != '' && format('github-actions@{0}.iam.gserviceaccount.com', secrets.GCP_PROJECT_ID) || 'MISSING_PROJECT_ID' }}
+          service_account: github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
       
-      - name: Set up Cloud SDK
+      - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
       
-      - name: Test Authentication
+      - name: Test
         run: |
-          echo "=========================================="
-          echo "Authentication Test"
-          echo "=========================================="
-          echo ""
-          echo "Authenticated as:"
+          echo "✅ Authentication successful!"
           gcloud auth list
-          echo ""
-          echo "Active project:"
           gcloud config get-value project
-          echo ""
-          echo "Available projects:"
-          gcloud projects list
-          echo ""
-          echo "=========================================="
-          echo "✅ Authentication Successful!"
-          echo "=========================================="

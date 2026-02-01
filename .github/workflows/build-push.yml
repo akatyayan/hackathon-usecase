@@ -36,11 +36,11 @@ jobs:
           echo "=== Root directory contents ==="
           ls -la
           echo ""
-          echo "=== Find all directories ==="
-          find . -type d -maxdepth 3
+          echo "=== Service directories ==="
+          ls -la hackathon-usecase/
           echo ""
-          echo "=== Find all Dockerfiles ==="
-          find . -name "Dockerfile"
+          echo "=== Dockerfiles found ==="
+          find . -name "Dockerfile" -type f
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -51,15 +51,33 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for GCR
+      - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
 
       - name: Build and Push Docker Image
         run: |
           IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/hackathon-images/${{ matrix.service }}"
+          SERVICE_PATH="hackathon-usecase/${{ matrix.service }}"
           
-          docker build -t ${IMAGE_NAME}:${{ github.sha }} -t ${IMAGE_NAME}:latest ./hackathon-usecase/${{ matrix.service }}
+          echo "📁 Building from path: $SERVICE_PATH"
+          echo "🐳 Image name: $IMAGE_NAME"
           
+          # Verify path exists
+          if [ ! -d "$SERVICE_PATH" ]; then
+            echo "❌ Path $SERVICE_PATH does not exist!"
+            ls -la hackathon-usecase/
+            exit 1
+          fi
+          
+          # Verify Dockerfile exists
+          if [ ! -f "$SERVICE_PATH/Dockerfile" ]; then
+            echo "❌ Dockerfile not found in $SERVICE_PATH!"
+            ls -la $SERVICE_PATH/
+            exit 1
+          fi
+          
+          # Build and push
+          docker build -t ${IMAGE_NAME}:${{ github.sha }} -t ${IMAGE_NAME}:latest $SERVICE_PATH
           docker push ${IMAGE_NAME}:${{ github.sha }}
           docker push ${IMAGE_NAME}:latest
           
